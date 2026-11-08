@@ -275,6 +275,18 @@ body::before{
 .eqo-add-icon:focus-visible{outline:2px solid #e1b0ff;outline-offset:2px}
 header .bell{position:relative;width:42px;height:42px;display:grid;place-items:center}
 #home .eqo-home-tabs{margin-top:9px}
+</style><style id="eqo-v50-playlist-artwork">
+/* Artwork tiles apply only to My Playlists. Individual tracks retain their list layout. */
+.eqo-playlist-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 13px;margin:14px 0 22px;align-items:start}
+#playlists .eqo-playlist-card{display:block;min-width:0;margin:0;padding:0;border:0;background:transparent!important;box-shadow:none!important;overflow:visible}
+.eqo-playlist-cover{display:grid;place-items:center;width:100%;aspect-ratio:1;border-radius:17px;overflow:hidden;border:1px solid #9b65d88c;background:radial-gradient(circle at 53% 37%,#c66bf1 0%,#6738c4 19%,#1a1858 54%,#0b0c2a 100%);box-shadow:0 7px 25px #0503139c,0 0 18px #8344d536;color:#eac7ff;font-size:55px;padding:0}
+.eqo-playlist-cover img{width:100%;height:100%;object-fit:cover;display:block}
+.eqo-playlist-cover span{filter:drop-shadow(0 0 18px #df90ff)}
+.eqo-playlist-footer{display:flex;align-items:flex-start;gap:2px;padding:9px 0 0}
+.eqo-playlist-main{flex:1;min-width:0;text-align:left;border:0;background:transparent;color:#fff;padding:0;display:flex;flex-direction:column;gap:4px}
+.eqo-playlist-title{font-size:13px;font-weight:650;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.eqo-playlist-count{font-size:11px;color:#baa7d5}
+#playlists .eqo-playlist-options{padding:0 5px;min-width:27px;font-size:22px;line-height:22px}
 </style></head><body><input accept="image/*" hidden="" id="eqoPlaylistArtInput" type="file"/><main class="app">
 <style id="eqo-v432-playlists">
 #playlistDetail,#playlistPicker{position:relative;min-height:calc(100dvh - 190px)}
@@ -379,10 +391,20 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closePlaylistMenu()}
 function renderPlaylists(){
  const host=$('playlists');host.replaceChildren();
  if(!playlists.length){const e=document.createElement('div');e.className='empty';e.textContent='No playlists yet. Create one and add songs from your library.';host.append(e);return}
+ const grid=document.createElement('div');grid.className='eqo-playlist-grid';host.append(grid);
  for(const p of playlists){
-  const row=document.createElement('div');row.className='song';const art=document.createElement('div');art.className='art';if(p.cover){const img=document.createElement('img');img.src=p.cover;img.alt='';art.append(img)}else art.textContent='♫';row.append(art);
-  const main=document.createElement('div');main.className='songmain';const t=document.createElement('div');t.className='songtitle';t.textContent=p.name;const sub=document.createElement('div');sub.className='sub';sub.textContent=p.songIds.length+' songs';main.append(t,sub);main.onclick=()=>openPlaylist(p.id);row.append(main);
-  const opts=document.createElement('button');opts.type='button';opts.className='iconbtn';opts.textContent='⋯';opts.dataset.playlistOptions='1';opts.setAttribute('aria-label','Playlist options for '+p.name);opts.onclick=e=>{e.stopPropagation();openPlaylistMenu(opts,p.id)};row.append(opts);host.append(row)
+  const card=document.createElement('div');card.className='song eqo-playlist-card';
+  const cover=document.createElement('button');cover.type='button';cover.className='eqo-playlist-cover';cover.setAttribute('aria-label','Open playlist '+p.name);
+  if(p.cover){const img=document.createElement('img');img.src=p.cover;img.alt='';cover.append(img)}
+  else {const symbol=document.createElement('span');symbol.textContent='♫';symbol.setAttribute('aria-hidden','true');cover.append(symbol)}
+  cover.onclick=()=>openPlaylist(p.id);
+  const footer=document.createElement('div');footer.className='eqo-playlist-footer';
+  const main=document.createElement('button');main.type='button';main.className='eqo-playlist-main';
+  const title=document.createElement('span');title.className='eqo-playlist-title';title.textContent=p.name;
+  const sub=document.createElement('span');sub.className='eqo-playlist-count';sub.textContent=p.songIds.length+' songs';
+  main.append(title,sub);main.onclick=()=>openPlaylist(p.id);
+  const opts=document.createElement('button');opts.type='button';opts.className='iconbtn eqo-playlist-options';opts.textContent='⋯';opts.dataset.playlistOptions='1';opts.setAttribute('aria-label','Playlist options for '+p.name);opts.onclick=e=>{e.stopPropagation();openPlaylistMenu(opts,p.id)};
+  footer.append(main,opts);card.append(cover,footer);grid.append(card);
  }
 }
 function sharePlaylist(id){
