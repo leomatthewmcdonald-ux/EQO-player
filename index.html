@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 44 (Drifting Sky)</title>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 45 (Playback Stability Test)</title>
 <style>
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f8efff;background:#070415}
 *{box-sizing:border-box}body{margin:0;min-height:100dvh;background:#070415}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e1b0ff;outline-offset:3px}
@@ -538,9 +538,12 @@ async function selectSong(id,autoplay,fromPlaylist=false){
  try{nextUrl=URL.createObjectURL(audioFile)}catch(e){diagnostics('Unable to open this audio file: '+e.message,true);return}
  audio.pause();
  if(current && current!==id)eqoSavePosition();
+ audio.removeAttribute('src');
+ audio.load();
  current=id;
  objectUrl=nextUrl;
  audio.src=nextUrl;
+ audio.load();
  eqoRetireUrl(previousUrl);
  $('playerTitle').textContent=s.title;
  $('playerStatus').textContent='Loading audio…';
@@ -552,7 +555,7 @@ async function selectSong(id,autoplay,fromPlaylist=false){
  }
 }
 function renderPlayerArt(s){const el=$('playerArt');el.replaceChildren();if(s?.art){const img=document.createElement('img');img.src=typeof s.art==='string'?s.art:URL.createObjectURL(s.art);if(typeof s.art!=='string')img.onload=()=>URL.revokeObjectURL(img.src);el.append(img)}else el.innerHTML=musicSVG}
-async function markPlayed(){if(!current)return;const s=songs.find(s=>s.id===current);if(s){s.lastPlayed=Date.now();try{await storePut('songs',s)}catch(e){}render()}}
+async function markPlayed(){if(!current)return;const s=songs.find(s=>s.id===current);if(s){s.lastPlayed=Date.now();/* Do not rewrite the entire MP3 Blob during playback on iOS Safari. */}}
 function jump(delta){if(!songs.length)return;const i=songs.findIndex(s=>s.id===current);selectSong(songs[(i+delta+songs.length)%songs.length].id,true)}
 function diagnostics(message,bad=false){$('diagnostic').textContent=message;$('diagnostic').classList.toggle('error',bad)}
 $('addHome').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('files').click()}};$('files').onchange=async e=>{const selected=Array.from(e.target.files||[]);if(!selected.length)return;try{await addFiles(selected)}catch(err){diagnostics('Import failed: '+err.message,true);alert('Import failed: '+err.message)}finally{e.target.value=''}};
@@ -580,7 +583,31 @@ audio.onpause=()=>{$('toggle').innerHTML=playSVG;$('toggle').setAttribute('aria-
 audio.oncanplay=()=>{if(audio.paused)$('playerStatus').textContent='Buffered and ready'};
 audio.onwaiting=()=>$('playerStatus').textContent='Buffering…';
 audio.onstalled=()=>{diagnostics('Playback stalled. Retrying audio…',true);eqoRecoverPlayback()};
-let eqoRecoverTimer=null;function eqoRecoverPlayback(){clearTimeout(eqoRecoverTimer);const token=eqoSwitchToken;eqoRecoverTimer=setTimeout(async()=>{if(token!==eqoSwitchToken||!current||audio.paused||audio.readyState>=3)return;const t=audio.currentTime;try{audio.load();audio.currentTime=t;await audio.play();diagnostics('Playback reconnected.')}catch(e){diagnostics('Playback paused by Safari. Tap Play to resume.',true)}},1800)};
+let eqoRecoverTimer=null,eqoRecoveryAttempts=0,eqoRecoveryFor=null;
+function eqoRecoverPlayback(){
+ clearTimeout(eqoRecoverTimer);
+ const token=eqoSwitchToken,track=current;
+ if(eqoRecoveryFor!==track){eqoRecoveryFor=track;eqoRecoveryAttempts=0}
+ eqoRecoverTimer=setTimeout(async()=>{
+  if(token!==eqoSwitchToken||track!==current||!current||audio.paused||audio.readyState>=3)return;
+  if(eqoRecoveryAttempts>=2){diagnostics('This song is not loading. Try selecting it again. Your music is still saved.',true);return}
+  eqoRecoveryAttempts++;
+  const song=songs.find(x=>x.id===track);
+  if(!(song?.file instanceof Blob)||!song.file.size){diagnostics('Saved audio data is unavailable for this track.',true);return}
+  const position=Number.isFinite(audio.currentTime)?audio.currentTime:0;
+  const oldUrl=objectUrl;
+  try{
+   const freshUrl=URL.createObjectURL(song.file);
+   audio.pause();audio.removeAttribute('src');audio.load();
+   objectUrl=freshUrl;audio.src=freshUrl;audio.load();
+   eqoRetireUrl(oldUrl);
+   if(position>0)audio.addEventListener('loadedmetadata',function restore(){audio.removeEventListener('loadedmetadata',restore);try{audio.currentTime=position}catch(e){}},{once:true});
+   await audio.play();
+   diagnostics('Audio connection refreshed.');
+  }catch(e){diagnostics('Playback retry '+eqoRecoveryAttempts+' failed: '+e.message,true)}
+ },2500);
+}
+audio.addEventListener('playing',()=>{clearTimeout(eqoRecoverTimer);eqoRecoveryAttempts=0});
 audio.addEventListener('waiting',eqoRecoverPlayback);
 audio.onerror=()=>{const code=audio.error?.code||'unknown';diagnostics('Audio error '+code+(code===4?' (Safari could not load this audio source). Try Play again. If this persists, check whether the file still exists in this Safari library.':': '+(audio.error?.message||'Cannot play this file')),true)};
 audio.ontimeupdate=()=>{if(Math.floor(audio.currentTime)%5===0)eqoSavePosition();$('elapsed').textContent=fmt(audio.currentTime);$('duration').textContent=fmt(audio.duration);if(Number.isFinite(audio.duration)&&audio.duration>0){$('seek').value=Math.round(audio.currentTime/audio.duration*1000);$('seek').style.setProperty('--eqo-progress',($('seek').value/10)+'%')}};
