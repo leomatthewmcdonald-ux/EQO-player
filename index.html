@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 49 (Refined Home)</title>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 51 (Recently Played Artwork)</title>
 <style>
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f8efff;background:#070415}
 *{box-sizing:border-box}body{margin:0;min-height:100dvh;background:#070415}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e1b0ff;outline-offset:3px}
@@ -287,6 +287,18 @@ header .bell{position:relative;width:42px;height:42px;display:grid;place-items:c
 .eqo-playlist-title{font-size:13px;font-weight:650;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .eqo-playlist-count{font-size:11px;color:#baa7d5}
 #playlists .eqo-playlist-options{padding:0 5px;min-width:27px;font-size:22px;line-height:22px}
+</style><style id="eqo-v51-recent-artwork">
+/* Recently Played uses artwork tiles; Library keeps its existing song rows. */
+#recent .eqo-recent-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:19px 13px;margin:14px 0 22px}
+#recent .eqo-recent-tile{min-width:0;display:flex;flex-direction:column;gap:7px}
+#recent .eqo-recent-cover{position:relative;display:grid;place-items:center;overflow:hidden;width:100%;aspect-ratio:1;border-radius:16px;border:1px solid #9560c28c;background:radial-gradient(circle at 55% 40%,#b76af2 0%,#5337a1 29%,#15163c 72%);color:#edd7ff;font-size:45px;box-shadow:0 6px 22px #08031c85;cursor:pointer;padding:0}
+#recent .eqo-recent-cover img{display:block;width:100%;height:100%;object-fit:cover}
+#recent .eqo-recent-cover:focus-visible,#recent .eqo-recent-title:focus-visible{outline:2px solid #e4bbff;outline-offset:3px}
+#recent .eqo-recent-info{display:flex;align-items:flex-start;gap:3px;min-width:0}
+#recent .eqo-recent-title{flex:1;min-width:0;text-align:left;background:none;border:0;color:#f9f1ff;padding:2px 0;font-size:13px;font-weight:650;line-height:1.35}
+#recent .eqo-recent-title span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#recent .eqo-recent-title small{display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:0;font-size:11px;color:#bba8d6;font-weight:400}
+#recent .eqo-recent-options{background:transparent;border:0;color:#d8b8f2;padding:0 5px;font-size:22px;line-height:24px;min-width:28px}
 </style></head><body><input accept="image/*" hidden="" id="eqoPlaylistArtInput" type="file"/><main class="app">
 <style id="eqo-v432-playlists">
 #playlistDetail,#playlistPicker{position:relative;min-height:calc(100dvh - 190px)}
@@ -541,7 +553,27 @@ window.addEventListener('scroll',closeSongMenu,true);
 
 
 function renderList(id,arr,empty){const host=$(id);host.replaceChildren();if(!arr.length){const e=document.createElement('div');e.className='empty';e.textContent=empty;host.append(e);return}for(const s of arr){const row=document.createElement('div');row.className='song';row.append(artBox(s));const main=document.createElement('div');main.className='songmain';const title=document.createElement('div');title.className='songtitle';title.textContent=s.title;const sub=document.createElement('div');sub.className='sub';sub.textContent=[s.artist,s.album].filter(Boolean).join(' · ')||(s.lastPlayed?'Played recently':'Local audio');main.append(title,sub);main.onclick=()=>selectSong(s.id,true);row.append(main);const edit=document.createElement('button');edit.className='iconbtn';edit.textContent='⋯';edit.setAttribute('aria-label','Song options');edit.onclick=(event)=>{event.stopPropagation();openSongMenu(edit,s.id)};row.append(edit);host.append(row)}}
-function render(){renderPlaylists();renderList('recent',[...songs].filter(s=>s.lastPlayed).sort((a,b)=>b.lastPlayed-a.lastPlayed).slice(0,6),'Your recently played songs will appear here.');renderList('library',songs,'No songs yet. Tap “Add MP3 files” to build your library.')}
+function renderRecentArtwork(){
+ const host=$('recent');host.replaceChildren();
+ const recentSongs=[...songs].filter(s=>s.lastPlayed).sort((a,b)=>b.lastPlayed-a.lastPlayed).slice(0,6);
+ if(!recentSongs.length){const e=document.createElement('div');e.className='empty';e.textContent='Your recently played songs will appear here.';host.append(e);return}
+ const grid=document.createElement('div');grid.className='eqo-recent-grid';host.append(grid);
+ for(const s of recentSongs){
+  const tile=document.createElement('div');tile.className='eqo-recent-tile';
+  const cover=document.createElement('button');cover.type='button';cover.className='eqo-recent-cover';cover.setAttribute('aria-label','Play '+s.title);
+  if(s.art){const img=document.createElement('img');img.alt='';if(typeof s.art==='string')img.src=s.art;else{const url=URL.createObjectURL(s.art);img.src=url;img.addEventListener('load',()=>URL.revokeObjectURL(url),{once:true});img.addEventListener('error',()=>URL.revokeObjectURL(url),{once:true})}cover.append(img)}
+  else{const glyph=document.createElement('span');glyph.textContent='♫';glyph.setAttribute('aria-hidden','true');cover.append(glyph)}
+  cover.onclick=()=>selectSong(s.id,true);
+  const info=document.createElement('div');info.className='eqo-recent-info';
+  const name=document.createElement('button');name.type='button';name.className='eqo-recent-title';
+  const title=document.createElement('span');title.textContent=s.title;
+  const subtitle=document.createElement('small');subtitle.textContent=s.artist||s.album||'Song';
+  name.append(title,subtitle);name.onclick=()=>selectSong(s.id,true);
+  const options=document.createElement('button');options.type='button';options.className='eqo-recent-options';options.textContent='⋯';options.setAttribute('aria-label','Song options for '+s.title);options.onclick=e=>{e.stopPropagation();openSongMenu(options,s.id)};
+  info.append(name,options);tile.append(cover,info);grid.append(tile);
+ }
+}
+function render(){renderPlaylists();renderRecentArtwork();renderList('library',songs,'No songs yet. Tap “Add MP3 files” to build your library.')}
 async function refresh(){playlists=await storeGetAll('playlists');songs=await storeGetAll('songs');songs.sort((a,b)=>a.added-b.added);render()}
 async function removeSong(id){if(current===id){++eqoSwitchToken;audio.pause();audio.removeAttribute('src');audio.load();if(objectUrl){eqoRetireUrl(objectUrl);objectUrl=null}current=null;$('playerTitle').textContent='Choose a song'}for(const p of playlists){if(p.songIds.includes(id)){p.songIds=p.songIds.filter(x=>x!==id);await storePut('playlists',p)}}await storeDelete('songs',id);await refresh()}
 async function eqoEmbeddedArtwork(file){
