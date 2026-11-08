@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 45 (Playback Stability Test)</title>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 46 (Playback Diagnostics)</title>
 <style>
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f8efff;background:#070415}
 *{box-sizing:border-box}body{margin:0;min-height:100dvh;background:#070415}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e1b0ff;outline-offset:3px}
@@ -544,14 +544,15 @@ async function selectSong(id,autoplay,fromPlaylist=false){
  objectUrl=nextUrl;
  audio.src=nextUrl;
  audio.load();
+ clearTimeout(eqoRecoverTimer);eqoRecoveryFor=id;eqoRecoveryAttempts=0;
  eqoRetireUrl(previousUrl);
  $('playerTitle').textContent=s.title;
  $('playerStatus').textContent='Loading audio…';
  $('diagnostic').textContent='';
  renderPlayerArt(s);window.eqoCurrentMedia={title:s.title,artist:s.artist||'EQO',album:s.album||'EQO',art:s.art||null};window.dispatchEvent(new Event('eqo-track-change'));show('playing');
  if(autoplay){
-  try{await audio.play()}
-  catch(e){if(token===eqoSwitchToken)diagnostics('Playback could not start. Tap Play to retry. '+e.message,true)}
+  try{await audio.play();if(token===eqoSwitchToken&&audio.readyState<3)eqoRecoverPlayback()}
+  catch(e){if(token===eqoSwitchToken){diagnostics('Playback could not start: '+e.message,true);eqoRecoverPlayback()}}
  }
 }
 function renderPlayerArt(s){const el=$('playerArt');el.replaceChildren();if(s?.art){const img=document.createElement('img');img.src=typeof s.art==='string'?s.art:URL.createObjectURL(s.art);if(typeof s.art!=='string')img.onload=()=>URL.revokeObjectURL(img.src);el.append(img)}else el.innerHTML=musicSVG}
@@ -578,10 +579,10 @@ $('artFile').onchange=async e=>{const f=e.target.files[0],s=songs.find(s=>s.id==
 $('tabHome').onclick=()=>show('home');$('tabLibrary').onclick=()=>{show('home');$('library').scrollIntoView({behavior:'smooth',block:'start'});$('tabHome').classList.remove('active');$('tabLibrary').classList.add('active')};$('tabShare').onclick=()=>{show('sharing');const host=$('shareList');host.replaceChildren();if(!playlists.length){host.innerHTML='<div class="empty">Create a playlist in your Library first.</div>';return}for(const p of playlists){const row=document.createElement('div');row.className='shareTile';const ic=document.createElement('span');ic.textContent='♫';const info=document.createElement('div');const name=document.createElement('strong');name.textContent=p.name;const count=document.createElement('small');count.textContent=p.songIds.length+' tracks · Share track list';info.append(name,count);const btn=document.createElement('button');btn.textContent='›';btn.setAttribute('aria-label','Share '+p.name);btn.onclick=()=>sharePlaylist(p.id);row.append(ic,info,btn);row.onclick=e=>{if(e.target!==btn)sharePlaylist(p.id)};host.append(row)}};$('tabPlay').onclick=()=>show('playing');$('bell').onclick=()=>show('notifications');
 $('toggle').onclick=async()=>{if(!current){show('home');return}try{if(audio.paused)await audio.play();else audio.pause()}catch(e){diagnostics('Playback error: '+e.message,true)}};
 $('prev').onclick=()=>jump(-1);$('next').onclick=()=>jump(1);
-audio.onplay=()=>{$('toggle').innerHTML=pauseSVG;$('toggle').setAttribute('aria-label','Pause');$('playerStatus').textContent='Playing';markPlayed()};
+audio.onplay=()=>{$('toggle').innerHTML=pauseSVG;$('toggle').setAttribute('aria-label','Pause');$('playerStatus').textContent=audio.readyState>=3?'Playing':'Loading audio…';markPlayed()};
 audio.onpause=()=>{$('toggle').innerHTML=playSVG;$('toggle').setAttribute('aria-label','Play');if(current)$('playerStatus').textContent='Paused'};
-audio.oncanplay=()=>{if(audio.paused)$('playerStatus').textContent='Buffered and ready'};
-audio.onwaiting=()=>$('playerStatus').textContent='Buffering…';
+audio.oncanplay=()=>{if(audio.paused)$('playerStatus').textContent='Ready';else if(!audio.seeking)$('playerStatus').textContent='Playing'};
+audio.onwaiting=()=>{if(!audio.paused)$('playerStatus').textContent='Buffering…'};
 audio.onstalled=()=>{diagnostics('Playback stalled. Retrying audio…',true);eqoRecoverPlayback()};
 let eqoRecoverTimer=null,eqoRecoveryAttempts=0,eqoRecoveryFor=null;
 function eqoRecoverPlayback(){
@@ -589,8 +590,8 @@ function eqoRecoverPlayback(){
  const token=eqoSwitchToken,track=current;
  if(eqoRecoveryFor!==track){eqoRecoveryFor=track;eqoRecoveryAttempts=0}
  eqoRecoverTimer=setTimeout(async()=>{
-  if(token!==eqoSwitchToken||track!==current||!current||audio.paused||audio.readyState>=3)return;
-  if(eqoRecoveryAttempts>=2){diagnostics('This song is not loading. Try selecting it again. Your music is still saved.',true);return}
+  if(token!==eqoSwitchToken||track!==current||!current||audio.readyState>=3&&!audio.seeking)return;
+  if(eqoRecoveryAttempts>=2){$('playerStatus').textContent='Playback unavailable';diagnostics('This song is not loading after two retries. Your music remains saved.',true);return}
   eqoRecoveryAttempts++;
   const song=songs.find(x=>x.id===track);
   if(!(song?.file instanceof Blob)||!song.file.size){diagnostics('Saved audio data is unavailable for this track.',true);return}
@@ -607,10 +608,10 @@ function eqoRecoverPlayback(){
   }catch(e){diagnostics('Playback retry '+eqoRecoveryAttempts+' failed: '+e.message,true)}
  },2500);
 }
-audio.addEventListener('playing',()=>{clearTimeout(eqoRecoverTimer);eqoRecoveryAttempts=0});
-audio.addEventListener('waiting',eqoRecoverPlayback);
+audio.addEventListener('playing',()=>{clearTimeout(eqoRecoverTimer);eqoRecoveryAttempts=0;$('playerStatus').textContent='Playing';diagnostics('')});
+audio.addEventListener('waiting',eqoRecoverPlayback);audio.addEventListener('stalled',eqoRecoverPlayback);audio.addEventListener('error',()=>{if(current)eqoRecoverPlayback()});
 audio.onerror=()=>{const code=audio.error?.code||'unknown';diagnostics('Audio error '+code+(code===4?' (Safari could not load this audio source). Try Play again. If this persists, check whether the file still exists in this Safari library.':': '+(audio.error?.message||'Cannot play this file')),true)};
-audio.ontimeupdate=()=>{if(Math.floor(audio.currentTime)%5===0)eqoSavePosition();$('elapsed').textContent=fmt(audio.currentTime);$('duration').textContent=fmt(audio.duration);if(Number.isFinite(audio.duration)&&audio.duration>0){$('seek').value=Math.round(audio.currentTime/audio.duration*1000);$('seek').style.setProperty('--eqo-progress',($('seek').value/10)+'%')}};
+audio.ontimeupdate=()=>{if(!audio.paused&&!audio.seeking&&audio.currentTime>0&&$('playerStatus').textContent==='Buffering…')$('playerStatus').textContent='Playing';if(Math.floor(audio.currentTime)%5===0)eqoSavePosition();$('elapsed').textContent=fmt(audio.currentTime);$('duration').textContent=fmt(audio.duration);if(Number.isFinite(audio.duration)&&audio.duration>0){$('seek').value=Math.round(audio.currentTime/audio.duration*1000);$('seek').style.setProperty('--eqo-progress',($('seek').value/10)+'%')}};
 audio.onended=()=>{if(eqoRepeatMode===2){audio.currentTime=0;audio.play().catch(()=>{});return}jump(1)};
 $('seek').oninput=e=>{e.target.style.setProperty('--eqo-progress',(Number(e.target.value)/10)+'%');if(Number.isFinite(audio.duration)&&audio.duration>0)audio.currentTime=Number(e.target.value)/1000*audio.duration};
 
