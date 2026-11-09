@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 53 (Website Link Sharing)</title>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 55 (Supabase Schema Fix)</title>
 <style>
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f8efff;background:#070415}
 *{box-sizing:border-box}body{margin:0;min-height:100dvh;background:#070415}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e1b0ff;outline-offset:3px}
@@ -819,4 +819,35 @@ eqoQueueRender();
   // The original player's library is untouched; do not change local storage.
  }catch(e){guest.classList.add('hidden')}
 })();
-</script><div id="eqo-build" aria-label="EQO build version" style="position:fixed;bottom:calc(73px + env(safe-area-inset-bottom));right:9px;font:10px -apple-system,sans-serif;color:#a89bc2;opacity:.65;z-index:5;pointer-events:none">v53</div></body></html>
+</script><div id="eqo-build" aria-label="EQO build version" style="position:fixed;bottom:calc(73px + env(safe-area-inset-bottom));right:9px;font:10px -apple-system,sans-serif;color:#a89bc2;opacity:.65;z-index:5;pointer-events:none">v53</div>
+<style id="eqo-v54-style">
+#eqoCloudPanel{position:fixed;inset:0;z-index:250;overflow-y:auto;background:#0b0820;color:#fff;padding:calc(24px + env(safe-area-inset-top)) 22px 45px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+#eqoCloudPanel[hidden]{display:none!important}#eqoCloudPanel .inner{max-width:510px;margin:auto}#eqoCloudPanel h2{font-size:24px;margin:20px 0}#eqoCloudPanel input{display:block;width:100%;font-size:16px;padding:14px;margin:12px 0;border-radius:12px;border:1px solid #7553a0;background:#1a1236;color:#fff}#eqoCloudPanel button{margin:6px 6px 6px 0;padding:12px 15px;border-radius:12px;border:1px solid #8b5ac8;background:#332057;color:#fff;font-size:14px}#eqoCloudPanel .msg{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;color:#dec9f5;font-size:13px}#eqoCloudPanel .cloudrow{padding:12px;margin:9px 0;border:1px solid #7656a0;border-radius:12px}#eqoCloudOpen{position:fixed;right:14px;bottom:calc(85px + env(safe-area-inset-bottom));z-index:110;background:#291b4b;color:#fff;border:1px solid #9e74d6;border-radius:22px;padding:10px 15px;font-size:12px;box-shadow:0 5px 18px #0008}
+</style>
+<button id="eqoCloudOpen" type="button">☁ Account</button>
+<section id="eqoCloudPanel" hidden aria-label="EQO cloud account"><div class="inner">
+<button id="eqoCloudClose" type="button">← Back to EQO</button><h2>EQO Cloud · Version 54</h2>
+<p class="msg">Test account sign-in and cloud playlist names. Your existing music and local playlists stay on this device; this test does not upload audio or replace them.</p>
+<div id="eqoAuthFields"><input id="eqoCloudEmail" type="email" autocomplete="email" placeholder="Email address"><input id="eqoCloudPassword" type="password" autocomplete="current-password" placeholder="Password (6+ characters)"><button id="eqoCloudSignup" type="button">Create account</button><button id="eqoCloudLogin" type="button">Sign in</button></div>
+<div id="eqoCloudSigned" hidden><p id="eqoCloudIdentity" class="msg"></p><button id="eqoCloudLogout" type="button">Sign out</button><h2>Cloud playlists</h2><input id="eqoCloudName" maxlength="120" placeholder="New playlist name"><button id="eqoCloudCreate" type="button">Save playlist to cloud</button><button id="eqoCloudRefresh" type="button">Refresh cloud playlists</button><div id="eqoCloudList"></div></div>
+<p id="eqoCloudStatus" class="msg" role="status" aria-live="polite"></p></div></section>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script id="eqo-v54-cloud-script">
+(()=>{
+const $=id=>document.getElementById(id), url='https://zzophokndqnutlocqbhi.supabase.co', key='sb_publishable_XdbQDoxQZdL8Fi3AykW39g_gh0xbI-f';
+let client=null,user=null;
+const status=t=>$('eqoCloudStatus').textContent=t;
+function explain(e){return (e&&e.message)||String(e)}
+async function init(){if(!window.supabase?.createClient){status('Cloud library did not load. Check your internet connection and reload.');return}client=window.supabase.createClient(url,key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});const {data,error}=await client.auth.getUser();if(error && !/session missing/i.test(explain(error)))status(explain(error));setUser(data?.user||null);client.auth.onAuthStateChange((_event,session)=>{setUser(session?.user||null)})}
+function setUser(u){user=u;$('eqoAuthFields').hidden=!!u;$('eqoCloudSigned').hidden=!u;$('eqoCloudIdentity').textContent=u?'Signed in as '+u.email:'';if(u)load();else $('eqoCloudList').replaceChildren()}
+$('eqoCloudOpen').onclick=()=>{$('eqoCloudPanel').hidden=false};$('eqoCloudClose').onclick=()=>{$('eqoCloudPanel').hidden=true};
+$('eqoCloudSignup').onclick=async()=>{if(!client)return;const email=$('eqoCloudEmail').value.trim(),password=$('eqoCloudPassword').value;if(!email||password.length<6){status('Enter an email and a password of at least 6 characters.');return}status('Creating account…');const {data,error}=await client.auth.signUp({email,password,emailRedirectTo:location.origin+location.pathname});status(error?explain(error):data.session?'Account created and signed in.':'Check your email for the confirmation link, then return here and sign in.')};
+$('eqoCloudLogin').onclick=async()=>{if(!client)return;status('Signing in…');const {error}=await client.auth.signInWithPassword({email:$('eqoCloudEmail').value.trim(),password:$('eqoCloudPassword').value});status(error?explain(error):'Signed in.')};
+$('eqoCloudLogout').onclick=async()=>{if(!client)return;const {error}=await client.auth.signOut();status(error?explain(error):'Signed out.')};
+async function load(){if(!client||!user)return;const {data,error}=await client.from('playlists').select('*').limit(50);if(error){status('Cloud playlist read failed: '+explain(error)+' — database column names or access policies may need checking.');return}const list=$('eqoCloudList');list.replaceChildren();for(const row of data){const div=document.createElement('div');div.className='cloudrow';div.textContent=row.name||row.title||'Untitled playlist';list.append(div)}if(!data.length)list.textContent='No cloud playlists yet.';status('Cloud playlist list loaded ('+data.length+').')}
+$('eqoCloudRefresh').onclick=load;
+$('eqoCloudCreate').onclick=async()=>{if(!client||!user)return;const name=$('eqoCloudName').value.trim();if(!name){status('Enter a playlist name first.');return}status('Saving playlist…');const {error}=await client.from('playlists').insert({title:name,owner_id:user.id});if(error){status('Cloud save failed: '+explain(error)+' — we may need to match the database schema before this feature works.');return}$('eqoCloudName').value='';await load();status('Playlist saved to Supabase. Close and reopen EQO, sign in, and refresh to verify persistence.')};
+init().catch(e=>status('Cloud setup failed: '+explain(e)));
+})();
+</script>
+</body></html>
