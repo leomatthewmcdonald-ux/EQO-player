@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 87 (Permission-Safe Sharing Test)</title>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 88 (Secure Guest Playlist Sharing)</title>
 <style>
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f8efff;background:#070415}
 *{box-sizing:border-box}body{margin:0;min-height:100dvh;background:#070415}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e1b0ff;outline-offset:3px}
@@ -1888,57 +1888,105 @@ const notice=$('sharing')?.querySelector('.notice');if(notice)notice.textContent
 </script>
 <style id="eqo-v86-share-style">#eqo86link{display:block;width:100%;margin:12px 0;padding:13px;border-radius:12px;border:1px solid #a86ff2;background:#302052;color:white;font-weight:650}#eqo86guest{position:fixed;inset:0;z-index:3000;background:#080617;color:white;overflow:auto;padding:24px 18px 100px}#eqo86guest[hidden]{display:none}#eqo86guest .panel{max-width:540px;margin:auto}#eqo86guest button{background:#38205d;color:white;border:1px solid #9b6bd7;border-radius:12px;padding:12px;margin:6px 0;width:100%;text-align:left}#eqo86guest audio{width:100%;margin-top:16px}#eqo86guest .hint{font-size:13px;color:#c8b5dd;line-height:1.6}</style>
 <div id="eqo86guest" hidden><div class="panel"><h1 style="font-size:28px">EQO</h1><h2 id="eqo86guestTitle">Shared playlist</h2><p id="eqo86guestStatus" class="hint">Loading…</p><div id="eqo86guestTracks"></div><audio id="eqo86guestAudio" controls playsinline></audio><button id="eqo86guestClose">Close shared playlist</button></div></div>
-<script id="eqo-v86-sharing-patch">
+<script id="eqo-v88-secure-guest-sharing">
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
 const base='https://zzophokndqnutlocqbhi.supabase.co';
 const key='sb_publishable_XdbQDoxQZdL8Fi3AykW39g_gh0xbI-f';
-let c;
-const cloud=()=>{if(!window.supabase?.createClient)throw Error('Cloud library is unavailable');return c||=(window.supabase.createClient(base,key,{auth:{persistSession:true}}))};
-const status=t=>{const el=$('eqo84status');if(el)el.textContent=t};
-const linkButton=document.createElement('button');linkButton.id='eqo86link';linkButton.type='button';linkButton.textContent='↗ Share link via Messages or Copy';
+const endpoint=base+'/functions/v1/eqo-guest-share';
+let client;
+const cloud=()=>{if(!window.supabase?.createClient)throw Error('Cloud library is unavailable');return client||=(window.supabase.createClient(base,key,{auth:{persistSession:true}}))};
+const status=t=>{const e=$('eqo84status');if(e)e.textContent=t};
+const linkButton=document.createElement('button');
+linkButton.id='eqo86link';linkButton.type='button';linkButton.textContent='↗ Share private guest link';
 const send=$('eqo84send');if(send)send.insertAdjacentElement('afterend',linkButton);
-// V87: do not issue playlist-ID-only links that cannot authorize private playback.
-// Keep username invitations available; do not alter RLS or expose private tracks.
-linkButton.textContent='🔒 Guest link requires secure access setup';
-linkButton.onclick=async()=>{
- status('Guest links are not enabled yet. Use the EQO username invitation above for an existing member. A private, revocable guest token and server-side validation are required before guest links can work.');
-};
-const eqo87UnusedLegacyShare=async()=>{
- const title=($('eqo84title')?.textContent||'Shared EQO playlist').replace(/^Share /,'');
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+async function request(body,jwt){
+ const headers={'Content-Type':'application/json','apikey':key};
+ if(jwt)headers.Authorization='Bearer '+jwt;
+ const response=await fetch(endpoint,{method:'POST',headers,body:JSON.stringify(body),cache:'no-store'});
+ let result;try{result=await response.json()}catch{throw Error('Guest service returned an unreadable response')}
+ if(!response.ok)throw Error(result.error||'Guest sharing failed');
+ return result;
+}
+async function selectedPlaylist(){
  const id=window.eqo86SelectedId;
- if(!id){status('Select a cloud playlist first.');return}
+ if(uuid.test(id||''))return id;
+ const title=($('eqo84title')?.textContent||'').replace(/^Share\s+/,'').trim();
+ if(!title)throw Error('Choose a cloud playlist first');
+ const {data,error}=await cloud().from('playlists').select('id,title').eq('title',title);
+ if(error)throw error;
+ if((data||[]).length!==1)throw Error('Select the cloud playlist again');
+ window.eqo86SelectedId=data[0].id;return data[0].id;
+}
+linkButton.onclick=async()=>{
+ linkButton.disabled=true;status('Creating a private link…');
  try{
-  const client=cloud();const a=await client.auth.getUser();if(!a.data?.user)throw Error('Sign in before sharing');
-  const r=await client.from('songs').select('id,file_path').eq('playlist_id',id);
-  if(r.error)throw r.error;if(!r.data?.length||r.data.some(x=>!x.file_path))throw Error('All songs must be uploaded to cloud storage first');
-  const url=new URL(window.location.href);url.searchParams.set('eqo_playlist',id);url.hash='';
-  const message='Listen to '+title+' on EQO';
-  if(navigator.share){try{await navigator.share({title:message,text:message,url:url.href});status('Share sheet opened. Your recipient still needs permission to stream the audio.');return}catch(e){if(e.name==='AbortError')return}}
-  if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(url.href);status('Playlist link copied. Guest playback depends on cloud permissions.')}else prompt('Copy playlist link:',url.href);
- }catch(e){status('Cannot share link: '+e.message)}
+  const {data:{session},error}=await cloud().auth.getSession();
+  if(error||!session?.access_token)throw Error('Sign in to share a playlist');
+  const id=await selectedPlaylist();
+  const result=await request({action:'create',playlist_id:id},session.access_token);
+  if(!/^[0-9a-f]{64}$/i.test(result.token||''))throw Error('Guest service did not return a valid link');
+  const url=new URL('https://eqo.fm/');
+  url.searchParams.set('eqo_guest',result.token);
+  const title=($('eqo84title')?.textContent||'EQO playlist').replace(/^Share\s+/,'');
+  const text='Listen to '+title+' on EQO';
+  if(navigator.share){
+   try{await navigator.share({title:text,text,url:url.href});status('Share sheet opened. Private link expires in 7 days.');return}
+   catch(e){if(e.name==='AbortError'){status('Sharing cancelled. You can tap Share again.');return}}
+  }
+  if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(url.href);status('Private link copied! Send it to your friend. Expires in 7 days.')}
+  else{prompt('Copy your private playlist link:',url.href);status('Copy the private link and send it to your friend.')}
+ }catch(e){status('Cannot create guest link: '+(e.message||String(e)))}
+ finally{linkButton.disabled=false}
 };
-// Capture cloud playlist selection without changing the existing username-invite workflow.
 const original=window.eqo84Share;
 if(typeof original==='function')window.eqo84Share=function(id,title){window.eqo86SelectedId=id;return original(id,title)};
-const shareTab=$('tabShare');if(shareTab)shareTab.addEventListener('click',()=>{
+const shareTab=$('tabShare');
+if(shareTab)shareTab.addEventListener('click',()=>{
  const host=$('shareList');if(!host)return;
- const obs=new MutationObserver(()=>{for(const b of host.querySelectorAll('button.shareTile')){if(b.dataset.eqo86)continue;b.dataset.eqo86='1';b.addEventListener('click',()=>{const match=(b.textContent||'').match(/Share cloud playlist/);if(match){setTimeout(()=>{const heading=$('eqo84title')?.textContent||'';const title=heading.replace(/^Share /,'');cloud().from('playlists').select('id,title').then(({data})=>{const p=(data||[]).find(p=>p.title===title);if(p)window.eqo86SelectedId=p.id})},0)}})}});
- obs.observe(host,{childList:true});setTimeout(()=>obs.disconnect(),10000);
+ const scan=()=>{for(const b of host.querySelectorAll('button.shareTile')){
+  if(b.dataset.eqo88)continue;b.dataset.eqo88='1';
+  b.addEventListener('click',()=>{if(!/Share cloud playlist/.test(b.textContent||''))return;
+   window.eqo86SelectedId=null;
+   setTimeout(async()=>{try{await selectedPlaylist()}catch(e){status('Select a cloud playlist to create a guest link.')}},0);
+  });
+ }};
+ scan();const observer=new MutationObserver(scan);observer.observe(host,{childList:true,subtree:true});setTimeout(()=>observer.disconnect(),10000);
 },true);
-async function guest(id){
- const panel=$('eqo86guest'),msg=$('eqo86guestStatus'),tracks=$('eqo86guestTracks'),audio=$('eqo86guestAudio');panel.hidden=false;
- $('eqo86guestClose').onclick=()=>{audio.pause();panel.hidden=true;const u=new URL(location.href);u.searchParams.delete('eqo_playlist');history.replaceState(null,'',u.href)};
- try{
-  const client=cloud();const p=await client.from('playlists').select('title').eq('id',id).maybeSingle();if(p.error)throw p.error;
-  if(!p.data)throw Error('This playlist is not publicly readable. The owner must enable guest access in the cloud database.');
-  $('eqo86guestTitle').textContent=p.data.title||'Shared playlist';
-  const r=await client.from('songs').select('id,title,file_path,position').eq('playlist_id',id).order('position');if(r.error)throw r.error;
-  if(!r.data?.length)throw Error('No accessible cloud songs found.');
-  msg.textContent='Select a song to play. Audio access depends on cloud storage permissions.';
-  for(const song of r.data){const b=document.createElement('button');b.textContent='♫ '+(song.title||'Untitled');b.onclick=async()=>{msg.textContent='Loading '+(song.title||'song')+'…';try{if(!song.file_path)throw Error('Audio is not uploaded');const x=await client.storage.from('EQO - music').createSignedUrl(song.file_path,3600);if(x.error)throw x.error;audio.src=x.data.signedUrl;await audio.play();msg.textContent='Playing '+(song.title||'song')}catch(e){msg.textContent='Cannot play: '+e.message+' — guest storage access may need to be enabled.'}};tracks.append(b)}
- }catch(e){msg.textContent='Guest access unavailable: '+e.message+' This link does not bypass private playlist permissions.'}
+const token=new URL(location.href).searchParams.get('eqo_guest');
+if(!token)return;
+const panel=$('eqo86guest'),msg=$('eqo86guestStatus'),tracks=$('eqo86guestTracks'),audio=$('eqo86guestAudio');
+if(!panel||!msg||!tracks||!audio)return;
+panel.hidden=false;tracks.replaceChildren();msg.textContent='Opening your private playlist…';
+const close=$('eqo86guestClose');
+close.onclick=()=>{audio.pause();audio.removeAttribute('src');panel.hidden=true;const u=new URL(location.href);u.searchParams.delete('eqo_guest');history.replaceState(null,'',u.href)};
+if(!/^[0-9a-f]{64}$/i.test(token)){msg.textContent='This playlist link is invalid.';return}
+let songs=[],current=-1,loadedAt=0;
+async function refresh(){
+ const result=await request({action:'redeem',token});
+ songs=Array.isArray(result.songs)?result.songs:[];
+ $('eqo86guestTitle').textContent=result.playlist?.title||'Shared EQO playlist';
+ loadedAt=Date.now();return songs;
 }
-const id=new URL(location.href).searchParams.get('eqo_playlist');if(id&&/^[a-z0-9-]{10,64}$/i.test(id)){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>guest(id));else guest(id)}
+async function play(index){
+ if(index<0||index>=songs.length)return;
+ try{
+  // Signed audio URLs last 15 minutes; renew them before playing an older link.
+  if(Date.now()-loadedAt>12*60*1000)await refresh();
+  const song=songs[index];if(!song?.audio_url)throw Error('Audio unavailable');
+  current=index;audio.src=song.audio_url;await audio.play();
+  msg.textContent='Playing '+(song.title||'Untitled')+' · '+(index+1)+' of '+songs.length;
+ }catch(e){msg.textContent='Cannot play song: '+(e.message||String(e))}
+}
+audio.addEventListener('ended',()=>{if(current+1<songs.length)play(current+1);else msg.textContent='Playlist finished.'});
+audio.addEventListener('error',async()=>{if(current<0||Date.now()-loadedAt<12*60*1000)return;const time=audio.currentTime;
+ try{await refresh();audio.src=songs[current].audio_url;audio.currentTime=time;await audio.play()}catch{msg.textContent='Audio link expired. Select a song to retry.'}});
+(async()=>{try{
+ await refresh();
+ if(!songs.length)throw Error('No cloud songs available in this playlist');
+ msg.textContent=songs.length+' songs · Tap a song to listen. The playlist will continue automatically.';
+ songs.forEach((song,i)=>{const button=document.createElement('button');button.type='button';button.textContent='♫ '+(song.title||'Untitled');button.style.cssText='display:block;width:100%;padding:13px;margin:7px 0;text-align:left;border:1px solid #7750ad;border-radius:12px;background:#191133;color:#fff';button.onclick=()=>play(i);tracks.append(button)});
+ }catch(e){msg.textContent='Unable to open playlist: '+(e.message||String(e))}})();
 })();
 </script></body></html>
