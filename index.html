@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 101 Cosmic Test Build</title>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 102 Cosmic Test Build</title>
 <style>
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f8efff;background:#070415}
 *{box-sizing:border-box}body{margin:0;min-height:100dvh;background:#070415}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e1b0ff;outline-offset:3px}
@@ -1943,7 +1943,7 @@ const notice=$('sharing')?.querySelector('.notice');if(notice)notice.textContent
 })();
 </script>
 <style id="eqo-v86-share-style">#eqo86link{display:block;width:100%;margin:12px 0;padding:13px;border-radius:12px;border:1px solid #a86ff2;background:#302052;color:white;font-weight:650}#eqo86guest{position:fixed;inset:0;z-index:3000;background:#080617;color:white;overflow:auto;padding:24px 18px 100px}#eqo86guest[hidden]{display:none}#eqo86guest .panel{max-width:540px;margin:auto}#eqo86guest button{background:#38205d;color:white;border:1px solid #9b6bd7;border-radius:12px;padding:12px;margin:6px 0;width:100%;text-align:left}#eqo86guest audio{width:100%;margin-top:16px}#eqo86guest .hint{font-size:13px;color:#c8b5dd;line-height:1.6}</style>
-<div id="eqo86guest" hidden><div class="panel"><h1 style="font-size:28px">EQO</h1><h2 id="eqo86guestTitle">Shared playlist</h2><img id="eqo100GuestCover" hidden alt="Playlist artwork"><p id="eqo86guestStatus" class="hint">Loading…</p><div id="eqo86guestTracks"></div><audio id="eqo86guestAudio" controls playsinline></audio><button id="eqo86guestClose">Close shared playlist</button></div></div>
+<div id="eqo86guest" hidden><div class="panel"><h1 style="font-size:28px">EQO</h1><h2 id="eqo86guestTitle">Shared playlist</h2><img id="eqo100GuestCover" hidden alt="Playlist artwork"><p id="eqo86guestStatus" class="hint">Loading…</p><div id="eqo86guestTracks"></div><div id="eqo102Player"><div id="eqo102Now">Choose a song</div><input id="eqo102Seek" type="range" min="0" max="1000" value="0" aria-label="Playback position"><div class="times"><span id="eqo102Elapsed">0:00</span><span id="eqo102Duration">0:00</span></div><div class="controls"><button id="eqo102Prev" aria-label="Previous song">⏮</button><button id="eqo102Play" class="big" aria-label="Play">▶</button><button id="eqo102Next" aria-label="Next song">⏭</button></div></div><audio id="eqo86guestAudio" playsinline preload="metadata"></audio><button id="eqo86guestClose">Close shared playlist</button></div></div>
 <script id="eqo-v88-secure-guest-sharing">
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
@@ -2023,7 +2023,7 @@ let songs=[],current=-1,loadedAt=0;
 const guestSession=('mediaSession' in navigator && typeof MediaMetadata!=='undefined')?navigator.mediaSession:null;
 function guestArtwork(song){
  const playlistArt=window.eqo89GuestPlaylistArt||'';
- const candidates=[song?.artwork_url,song?.cover_url,song?.art_url,song?.artwork,song?.cover,playlistArt];
+ const candidates=[song?.artwork_url,song?.cover_url,song?.art_url,song?.artwork,song?.cover,song?.art,song?.image_url,playlistArt];
  for(const candidate of candidates){
   const url=typeof candidate==='string'?candidate:(candidate&&typeof candidate.url==='string'?candidate.url:'');
   if(url && (/^https:\/\//i.test(url)||/^data:image\//i.test(url)))return [{src:url,sizes:'512x512'}];
@@ -2056,8 +2056,8 @@ async function refresh(){
  const result=await request({action:'redeem',token});
  songs=Array.isArray(result.songs)?result.songs:[];
  $('eqo86guestTitle').textContent=result.playlist?.title||'Shared EQO playlist';
- window.eqo89GuestPlaylistArt=result.playlist?.artwork_url||result.playlist?.cover_url||result.playlist?.art_url||result.playlist?.artwork||'';
- loadedAt=Date.now();const cover=$('eqo100GuestCover');const src=window.eqo89GuestPlaylistArt;if(src && cover){cover.src=src;cover.hidden=false}return songs;
+ window.eqo89GuestPlaylistArt=result.playlist?.artwork_url||result.playlist?.cover_url||result.playlist?.art_url||result.playlist?.artwork||result.playlist?.cover||result.playlist?.art||result.playlist?.image_url||'';
+ loadedAt=Date.now();const cover=$('eqo100GuestCover');const src=guestArtwork({})[0]?.src;if(src && cover){cover.onerror=()=>{cover.hidden=true};cover.src=src;cover.hidden=false}return songs;
 }
 async function play(index){
  if(index<0||index>=songs.length)return;
@@ -2065,10 +2065,18 @@ async function play(index){
   // Signed audio URLs last 15 minutes; renew them before playing an older link.
   if(Date.now()-loadedAt>12*60*1000)await refresh();
   const song=songs[index];if(!song?.audio_url)throw Error('Audio unavailable');
-  current=index;audio.src=song.audio_url;guestBindControls();await audio.play();guestBindControls();
+  current=index;tracks.querySelectorAll('button').forEach((b,j)=>b.classList.toggle('eqo102Active',j===index));$('eqo102Now').textContent=song.title||'Untitled';audio.src=song.audio_url;guestBindControls();await audio.play();guestBindControls();
   msg.textContent='Playing '+(song.title||'Untitled')+' · '+(index+1)+' of '+songs.length;
  }catch(e){msg.textContent='Cannot play song: '+(e.message||String(e))}
 }
+const toggle=$('eqo102Play'), seek=$('eqo102Seek');
+const fmt=t=>Number.isFinite(t)?Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0'):'0:00';
+function updateGuestUI(){toggle.textContent=audio.paused?'▶':'Ⅱ';toggle.setAttribute('aria-label',audio.paused?'Play':'Pause');seek.value=audio.duration>0?Math.round(audio.currentTime/audio.duration*1000):0;$('eqo102Elapsed').textContent=fmt(audio.currentTime);$('eqo102Duration').textContent=fmt(audio.duration);}
+toggle.onclick=()=>{if(current<0){play(0)}else if(audio.paused){audio.play().catch(e=>{msg.textContent=e.message})}else audio.pause()};
+$('eqo102Prev').onclick=()=>{if(audio.currentTime>3)audio.currentTime=0;else if(current>0)play(current-1)};
+$('eqo102Next').onclick=()=>{if(current+1<songs.length)play(current+1)};
+seek.oninput=()=>{if(Number.isFinite(audio.duration))audio.currentTime=Number(seek.value)*audio.duration/1000};
+for(const ev of ['timeupdate','durationchange','play','pause','ended'])audio.addEventListener(ev,updateGuestUI);
 audio.addEventListener('ended',()=>{if(current+1<songs.length)play(current+1);else{msg.textContent='Playlist finished.';if(guestSession)guestSession.playbackState='none'}});
 audio.addEventListener('error',async()=>{if(current<0||Date.now()-loadedAt<12*60*1000)return;const time=audio.currentTime;
  try{await refresh();audio.src=songs[current].audio_url;audio.currentTime=time;await audio.play()}catch{msg.textContent='Audio link expired. Select a song to retry.'}});
@@ -2257,4 +2265,7 @@ document.addEventListener('DOMContentLoaded',()=>{
  const close=$('eqo86guestClose');if(close){const join=document.createElement('button');join.id='eqo101GuestJoin';join.type='button';join.textContent='Create an EQO account / Sign in';close.before(join);join.onclick=()=>{$('eqoCloudOpen')?.click();$('eqoCloudEmail')?.focus();};}
 });
 </script>
-</body></html>
+<style id="eqo102-guest-style">
+#eqo86guest{background:radial-gradient(ellipse at 78% 22%,#55258c88,transparent 58%),radial-gradient(ellipse at 12% 75%,#263f9b88,transparent 60%),#080617!important;background-attachment:fixed!important;padding-bottom:calc(30px + env(safe-area-inset-bottom))}
+#eqo86guest .panel>h1{text-align:center;letter-spacing:4px}#eqo86guestTitle{text-align:center;font-size:24px}#eqo86guestStatus{text-align:center}#eqo86guest .eqo100GuestTrack{width:100%;min-height:66px;border-radius:0!important;text-align:left}#eqo86guest .eqo102Active strong{color:#dfaaff}#eqo86guest .eqo100GuestTrack .art{width:54px;height:54px}#eqo86guest .eqo100GuestTrack small{color:#c8b5dd}#eqo102Player{position:sticky;bottom:0;z-index:2;background:#100b29f2;padding:15px 12px;border-radius:18px;margin-top:20px}#eqo102Now{text-align:center;font-weight:650}#eqo102Seek{width:100%;accent-color:#b64cff;margin-top:12px}#eqo86guest #eqo102Player .controls button{width:auto;text-align:center;background:transparent;border:0;box-shadow:none;font-size:24px}#eqo86guest #eqo102Player .controls .big{background:radial-gradient(circle at 30% 22%,#c868ff,#7628de 65%,#4217aa);border:1px solid #e6b2ff;border-radius:50%;width:64px;height:64px;min-width:64px}#eqo86guestAudio{position:absolute;width:1px!important;height:1px;opacity:0;pointer-events:none}#eqo86guest #eqo101GuestJoin,#eqo86guest #eqo86guestClose{text-align:center;background:transparent;border:1px solid #a86ff255}
+</style></body></html>
