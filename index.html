@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 110 Unified Background</title>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 112 Guest Lock Screen</title>
 <style>
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f8efff;background:#070415}
 *{box-sizing:border-box}body{margin:0;min-height:100dvh;background:#070415}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e1b0ff;outline-offset:3px}
@@ -1874,6 +1874,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   return [{src:src,sizes:'512x512'}];
  }
  function sync(){
+  if(document.querySelector('#eqo86guest:not([hidden])'))return;
   if(!('mediaSession' in navigator)||typeof MediaMetadata==='undefined')return;
   const active=cloudActive()?cloud:local;
   const info=cloudActive()?(cloud.eqoTrackInfo||{}):(window.eqoCurrentMedia||{});
@@ -2012,24 +2013,38 @@ function guestArtwork(song){
  }
  return [];
 }
-let guestMetadataKey='', guestImage=null;
+let guestMetadataKey='', guestImage=null, guestResolved=null;
 function guestSync(){
- if(!guestSession||current<0||!songs[current])return;
+ if(!guestSession||panel.hidden||current<0||!songs[current])return;
  const song=songs[current];
  try{
-  const artwork=guestArtwork(song);
-  const meta={title:song.title||'Untitled',artist:song.artist||song.artist_name||'EQO',album:$('eqo86guestTitle')?.textContent||'Shared playlist',artwork};
-  const key=JSON.stringify([current,meta]);
-  if(key!==guestMetadataKey || guestSession.metadata?.title!==meta.title || guestSession.metadata?.artwork?.[0]?.src!==artwork[0]?.src){
-   guestSession.metadata=new MediaMetadata(meta);guestMetadataKey=key;
-   if(artwork.length){const img=new Image();guestImage=img;img.onload=()=>{if(guestImage!==img||guestMetadataKey!==key||panel.hidden)return;try{guestSession.metadata=new MediaMetadata({...meta,artwork:[{src:artwork[0].src,sizes:img.naturalWidth+'x'+img.naturalHeight}]});}catch(e){}};img.src=artwork[0].src;}
+  const candidates=[...guestArtwork(song),...guestArtwork({})].filter((v,i,arr)=>arr.findIndex(x=>x.src===v.src)===i);
+  const meta={title:song.title||'Untitled',artist:song.artist||song.artist_name||'EQO',album:$('eqo86guestTitle')?.textContent||'Shared playlist'};
+  const key=JSON.stringify([current,meta,candidates]);
+  if(key!==guestMetadataKey){
+   guestMetadataKey=key;guestResolved=null;guestImage=null;
+   guestSession.metadata=new MediaMetadata({...meta,artwork:candidates.slice(0,1)});
+   const load=i=>{
+    if(key!==guestMetadataKey||panel.hidden||i>=candidates.length)return;
+    const img=new Image();guestImage=img;
+    img.onerror=()=>{if(guestImage===img)load(i+1)};
+    img.onload=()=>{
+     if(guestImage!==img||key!==guestMetadataKey||panel.hidden)return;
+     const art={src:candidates[i].src,sizes:img.naturalWidth+'x'+img.naturalHeight};
+     guestResolved=art;
+     try{guestSession.metadata=new MediaMetadata({...meta,artwork:[art]})}catch(e){}
+    };
+    img.src=candidates[i].src;
+   };load(0);
+  }else if(guestSession.metadata?.title!==meta.title||guestSession.metadata?.artwork?.[0]?.src!==(guestResolved||candidates[0])?.src){
+   guestSession.metadata=new MediaMetadata({...meta,artwork:guestResolved?[guestResolved]:candidates.slice(0,1)});
   }
   if(Number.isFinite(audio.duration)&&audio.duration>0)try{guestSession.setPositionState({duration:audio.duration,position:Math.min(audio.duration,Math.max(0,audio.currentTime)),playbackRate:audio.playbackRate})}catch(e){}
   guestSession.playbackState=audio.paused?'paused':'playing';
  }catch(e){console.debug('Guest media metadata unavailable',e)}
 }
 function guestBindControls(){
- if(!guestSession)return;
+ if(!guestSession||panel.hidden)return;
  const actions={
   play:()=>{audio.play().catch(e=>{msg.textContent='Unable to resume: '+e.message})},
   pause:()=>audio.pause(),
@@ -2417,4 +2432,9 @@ $('sharePlaying')?.addEventListener('click',async e=>{e.preventDefault();e.stopI
 })();
 </script>
 
+<style id="eqo111-shared-sky">
+body:has(#eqo86guest:not([hidden])) .app{visibility:hidden!important}
+#eqo86guest{background:transparent!important;isolation:isolate!important}
+#eqo86guest::before,#eqo86guest::after{display:none!important;content:none!important}
+</style>
 </body></html>
