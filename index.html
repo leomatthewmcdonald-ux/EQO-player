@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 108 Artwork and Cloud Labels</title>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 109 Sharing Repair</title>
 <style>
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f8efff;background:#070415}
 *{box-sizing:border-box}body{margin:0;min-height:100dvh;background:#070415}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e1b0ff;outline-offset:3px}
@@ -1677,8 +1677,9 @@ function openPicker(){const row=[...document.querySelectorAll('#eqoCloudList [da
 async function removeTrack(song){if(!confirm('Remove "'+song.title+'" from this playlist? The audio file stays in cloud storage.'))return;await mutate('songs','delete',null,song.id);tracks=tracks.filter(x=>x.id!==song.id);renderDetail();refresh()}
 async function changeTitle(){const name=prompt('Rename playlist',active.title);if(!name?.trim())return;await mutate('playlists','update',{title:name.trim()},active.id);active.title=name.trim();renderDetail();refresh()}
 async function deletePlaylist(){if(!confirm('Delete playlist "'+active.title+'"? This cannot be undone.'))return;alert('For safety, delete cloud playlists using your existing cloud account controls. Songs are not deleted here.')} // no destructive cascade
-function changeArtwork(){const row=[...document.querySelectorAll('#eqoCloudList [data-cloud-id]')].find(x=>x.dataset.cloudId===active.id);const b=row?.closest('#eqo-v69-cloud')?.querySelector('.eqo-v69-card .eqo-v69-meta button[aria-label^="Change artwork"]');if(b){b.click()}else alert('Open Cloud Playlists and use Change Artwork on the playlist card.')}
-function downloadArtwork(){const src=window.eqoArtwork73?.get(active.id);if(!src){alert('No custom artwork is saved for this playlist.');return}const a=el('a');a.href=src;a.download=(active.title||'playlist').replace(/[^a-z0-9_-]/gi,'_')+'-artwork.jpg';a.click()}
+function changeArtwork(){const id=active.id;const input=document.createElement('input');input.type='file';input.accept='image/*';input.onchange=async()=>{try{const f=input.files?.[0];if(!f)return;const img=await createImageBitmap(f);const canvas=document.createElement('canvas');canvas.width=canvas.height=450;const side=Math.min(img.width,img.height);canvas.getContext('2d').drawImage(img,(img.width-side)/2,(img.height-side)/2,side,side,0,0,450,450);img.close();await window.eqoArtwork73.uploadDataUrl(id,canvas.toDataURL('image/jpeg',.85));if(active?.id===id)renderDetail()}catch(e){alert('Artwork could not be saved: '+e.message)}};input.click()}
+
+async function downloadArtwork(){const src=await window.eqoArtwork73?.load(active.id,{force:true});if(!src){alert('No custom artwork is saved for this playlist.');return}const a=el('a');a.href=src;a.download=(active.title||'playlist').replace(/[^a-z0-9_-]/gi,'_')+'-artwork.jpg';a.click()}
 function share(){window.eqo84Share?.(active.id,active.title)}
 function playlistMenu(anchor){options(anchor,[['＋ Add Songs',openPicker],['− Remove Songs',()=>{ordering=false;renderDetail(true)}],['▧ Change Artwork',changeArtwork],['↓ Download Artwork',downloadArtwork],['✎ Rename Playlist',changeTitle],['↗ Share Playlist',share],['↕ Edit Playlist Order',()=>{ordering=true;ordered=tracks.slice();renderDetail()}],['Delete Playlist',deletePlaylist,true]])}
 async function saveOrder(){for(let i=0;i<ordered.length;i++)await mutate('songs','update',{position:i+1},ordered[i].id);tracks=ordered.slice();ordering=false;renderDetail();refresh()}
@@ -2342,7 +2343,7 @@ async function ensurePath(s,user){
    const r=await client.storage.from('EQO - music').upload(path,new Blob([bytes],{type:blob.type||'audio/mpeg'}),{upsert:false});
    if(r.error&&!/already exists|duplicate/i.test(r.error.message))throw Error(r.error.message);
    const latest=(await window.eqoLocalBridge.all('songs')).find(x=>x.id===s.id);
-   if(latest){latest.eqo105CloudPaths={...latest.eqo105CloudPaths,[user.id]:path};await window.eqoLocalBridge.put('songs',latest)}
+   if(latest){latest.eqo105CloudPaths={...latest.eqo105CloudPaths,[user.id]:path};try{await window.eqoLocalBridge.put('songs',latest)}catch(e){console.warn('Local metadata write failed',e)}}
   }
   const existing=checked(await client.from('library_songs').select('file_path').eq('owner_id',user.id).eq('file_path',path).limit(1));
   if(!existing.length)checked(await client.from('library_songs').insert({owner_id:user.id,title:s.title||'Untitled',artist:s.artist||'',file_path:path}));
@@ -2360,8 +2361,8 @@ window.eqo106Sync=async()=>{
   const user=session.user, consent='eqo106-consent-'+user.id;
   await verifyLabels(user);const list=(await window.eqoLocalBridge.all('songs')).filter(s=>!s.eqo106Synced?.[user.id]||!window.eqo108Verified.has(s.id));if(!list.length)return;
   if(localStorage.getItem(consent)!=='yes'){if(!confirm('Automatically back up your imported music to your EQO cloud account? Only upload music you have permission to store. Local copies will be kept.'))return;localStorage.setItem(consent,'yes')}
-  let done=0;for(const song of list){window.eqoLocalBridge.diagnostics('Cloud sync '+(done+1)+' of '+list.length+': '+song.title);await ensurePath(song,user);const latest=(await window.eqoLocalBridge.all('songs')).find(x=>x.id===song.id);if(latest){latest.eqo106Synced={...latest.eqo106Synced,[user.id]:true};await window.eqoLocalBridge.put('songs',latest)}done++}
-  await verifyLabels(user);window.eqoLocalBridge.diagnostics('Cloud sync complete: '+done+' song(s).');
+  let done=0,failed=[];for(const song of list){try{window.eqoLocalBridge.diagnostics('Cloud sync '+(done+1)+' of '+list.length+': '+song.title);await ensurePath(song,user);const latest=(await window.eqoLocalBridge.all('songs')).find(x=>x.id===song.id);if(latest){latest.eqo106Synced={...latest.eqo106Synced,[user.id]:true};try{await window.eqoLocalBridge.put('songs',latest)}catch(e){console.warn('Local metadata write failed',e)}}done++}catch(e){failed.push(song.title+': '+e.message)}}
+  await verifyLabels(user);window.eqoLocalBridge.diagnostics('Cloud sync: '+done+' song(s) processed.'+(failed.length?' Retry needed: '+failed.join('; '):''),!!failed.length);
  }catch(e){window.eqoLocalBridge.diagnostics('Cloud sync paused: '+e.message+'. Local music retained. Retry Cloud Sync from the song menu.',true)}finally{syncing=false}
 };
 window.addEventListener('online',()=>window.eqo106Sync());
@@ -2377,23 +2378,27 @@ async function run(title,items,share,playlistCover){
   const session=checked(await client.auth.getSession()).session;
   if(!session)throw Error('Sign in to EQO Cloud first.');
   const user=session.user;
-  const rows=[];
+  const rows=[];let artWarning=false;const artTracks=[];let cover='';
   for(let i=0;i<items.length;i++){
    const s=items[i];status('Preparing song '+(i+1)+' of '+items.length+': '+s.title);
    const path=await ensurePath(s,user);
    rows.push({title:s.title||'Untitled',artist:s.artist||'',file_path:path,position:i+1});
+   if(share){try{artTracks.push(await signedArt(await syncArt(s.art,user,s.id)))}catch(e){artWarning=true;artTracks.push('')}}
   }
   if(!share){status('Cloud sync complete. Original music retained.');return}
   status('Registering cloud playlist…');
-  const p=checked(await client.from('playlists').insert({title,owner_id:user.id}).select('id').single());
-  checked(await client.from('songs').insert(rows.map(r=>({...r,playlist_id:p.id}))));
+  const candidates=checked(await client.from('playlists').select('id').eq('owner_id',user.id).eq('title',title));
+  let p;
+  for(const candidate of candidates){const existing=checked(await client.from('songs').select('title,artist,file_path,position').eq('playlist_id',candidate.id).order('position'));if(existing.length===rows.length&&existing.every((r,i)=>r.file_path===rows[i].file_path&&r.title===rows[i].title&&(r.artist||'')===rows[i].artist)){p=candidate;break}}
+  if(!p){p=checked(await client.from('playlists').insert({title,owner_id:user.id}).select('id').single());checked(await client.from('songs').insert(rows.map(r=>({...r,playlist_id:p.id}))));}
+  try{cover=await signedArt(await syncArt(playlistCover,user,p.id));if(playlistCover&&typeof playlistCover==='string'&&playlistCover.startsWith('data:image/'))await window.eqoArtwork73?.uploadDataUrl(p.id,playlistCover)}catch(e){artWarning=true} 
   $('eqoCloudRefresh')?.click();
   if(!share){status('Added to EQO Cloud. Your local copy is unchanged.');return}
   status('Creating private guest link…');
   const response=await fetch(base+'/functions/v1/eqo-guest-share',{method:'POST',headers:{'Content-Type':'application/json',apikey:key,Authorization:'Bearer '+session.access_token},body:JSON.stringify({action:'create',playlist_id:p.id})});
   const result=await response.json();
   if(!response.ok||!/^[0-9a-f]{64}$/i.test(result.token||''))throw Error(result.error||'Guest link could not be created.');
-  const url='https://eqo.fm/?eqo_guest='+result.token;
+  const url='https://eqo.fm/?eqo_guest='+result.token+((cover||artTracks.some(Boolean))?'#'+new URLSearchParams({eqo_art:JSON.stringify({cover,tracks:artTracks})}).toString():'');
   status('Private link created. Expires in 7 days.'+(artWarning?' Some artwork could not be uploaded.':''));
   const b=document.createElement('button');b.className='secondary';b.textContent='Share or copy link';b.id='eqo105link';
   $('eqo105link')?.remove();$('eqo105done').before(b);
