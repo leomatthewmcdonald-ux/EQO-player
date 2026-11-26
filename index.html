@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 105 Sharing</title>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><meta content="#08051a" name="theme-color"/><title>EQO — Version 106 Cloud First</title>
 <style>
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f8efff;background:#070415}
 *{box-sizing:border-box}body{margin:0;min-height:100dvh;background:#070415}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e1b0ff;outline-offset:3px}
@@ -595,7 +595,7 @@ function openSongMenu(anchor,id){
  menu.setAttribute('role','menu');menu.setAttribute('aria-label','Song actions');
  const choices=[
   ['↗','Share',()=>exportSong(id)],
-  ['☁','Add to Cloud',()=>window.eqo105Song(id,false)],
+  ['☁','Retry Cloud Sync',()=>window.eqo105Song(id,false)],
   ['＋','Play next',()=>enqueueSong(id,true)],
   ['≡','Add to queue',()=>enqueueSong(id,false)],
   ['▤','Add to playlist',()=>{const song=songs.find(s=>s.id===id);if(song)window.eqo82ChoosePlaylist?.(id,song.title||'Song')}],
@@ -654,7 +654,7 @@ async function eqoEmbeddedArtwork(file){
  if(!/\.mp3$/i.test(file.name))return null;
  try{const head=new Uint8Array(await file.slice(0,10).arrayBuffer());if(String.fromCharCode(...head.slice(0,3))!=='ID3')return null;const version=head[3];if(version<3||version>4)return null;const size=((head[6]&127)<<21)|((head[7]&127)<<14)|((head[8]&127)<<7)|(head[9]&127);if(size>12*1024*1024)return null;const bytes=new Uint8Array(await file.slice(10,10+size).arrayBuffer());let pos=0;while(pos+10<bytes.length){const key=String.fromCharCode(...bytes.slice(pos,pos+4));let n=version===4?((bytes[pos+4]&127)<<21)|((bytes[pos+5]&127)<<14)|((bytes[pos+6]&127)<<7)|(bytes[pos+7]&127):((bytes[pos+4]<<24)>>>0)|(bytes[pos+5]<<16)|(bytes[pos+6]<<8)|bytes[pos+7];if(!n||n>bytes.length-pos-10)break;if(key==='APIC'){const start=pos+10;let p=start+1;while(p<start+n&&bytes[p]!==0)p++;const mime=new TextDecoder().decode(bytes.slice(start+1,p));p+=2;const enc=bytes[start];if(enc===0||enc===3){while(p<start+n&&bytes[p]!==0)p++;p++}else{while(p+1<start+n&&(bytes[p]!==0||bytes[p+1]!==0))p+=2;p+=2}if(p<start+n&&mime.startsWith('image/')){const blob=new Blob([bytes.slice(p,start+n)],{type:mime});return await prepareArtwork(blob)}}pos+=10+n}}catch(e){}return null;
 }
-async function addFiles(list){let count=0;for(const f of list){if(!f.type.startsWith('audio/')&&!/\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(f.name))continue;const id=crypto.randomUUID?.()||String(Date.now()+Math.random());try{await storePut('songs',{id,title:f.name.replace(/\.[^.]+$/,''),file:f,added:Date.now()+count,lastPlayed:0,art:await eqoEmbeddedArtwork(f)});count++}catch(e){alert('Could not save this file. iPhone storage may be full or restricted. '+e.message);break}}await refresh();if(!count){diagnostics('No supported audio files were selected. Choose MP3, M4A, AAC, WAV, OGG, or FLAC.',true);return}diagnostics(count+' audio file'+(count===1?'':'s')+' added to your library.');if(count===1&&songs.length===1)await selectSong(songs[0].id,false)}
+async function addFiles(list){let count=0;for(const f of list){if(!f.type.startsWith('audio/')&&!/\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(f.name))continue;const id=crypto.randomUUID?.()||String(Date.now()+Math.random());try{await storePut('songs',{id,title:f.name.replace(/\.[^.]+$/,''),file:f,added:Date.now()+count,lastPlayed:0,art:await eqoEmbeddedArtwork(f)});count++}catch(e){alert('Could not save this file. iPhone storage may be full or restricted. '+e.message);break}}await refresh();if(count)window.eqo106Sync?.();if(!count){diagnostics('No supported audio files were selected. Choose MP3, M4A, AAC, WAV, OGG, or FLAC.',true);return}diagnostics(count+' audio file'+(count===1?'':'s')+' added to your library.');if(count===1&&songs.length===1)await selectSong(songs[0].id,false)}
 let eqoSwitchToken=0;
 let eqoShuffleOn=false,eqoRepeatMode=0,eqoJourneyOn=false,eqoHistory=[];
 const eqoSessionKey='eqo-v43-playback';
@@ -848,7 +848,7 @@ jump=function(delta){
 };
 eqoQueueRender();
 // Read-only access to local library for unified Recently Played.
-window.eqoLocalBridge={getSongs:()=>songs,play:(id)=>selectSong(id,true)};
+window.eqoLocalBridge={getSongs:()=>songs,play:(id)=>selectSong(id,true),all:storeGetAll,put:storePut,current:()=>current,refresh,diagnostics};
 
 })();
 
@@ -1770,7 +1770,7 @@ async function upload(file,user){
  if(r.error)throw Error('Upload failed: '+r.error.message);
  return path
 }
-async function addCloud(s,position,existing,user){let path=s.song.file_path;if(s.source==='local'){const blob=[s.song.file,s.song.blob,s.song.audio,s.song.data].find(v=>v instanceof Blob&&v.size>0);if(!(blob instanceof Blob))throw Error('Local song "'+s.title+'" has no accessible MP3 data. Choose its file using Upload from Device.');path=await upload(blob,user)}if(existing.has(path))return position;const r=await client.from('songs').insert({playlist_id:target.id,title:s.title,artist:s.artist,file_path:path,position:position+1});if(r.error)throw Error('Could not add '+s.title+': '+r.error.message);existing.add(path);return position+1}
+async function addCloud(s,position,existing,user){let path=s.song.file_path;if(s.source==='local'){const blob=[s.song.file,s.song.blob,s.song.audio,s.song.data].find(v=>v instanceof Blob&&v.size>0);if(!(blob instanceof Blob))throw Error('Local song "'+s.title+'" has no accessible MP3 data. Choose its file using Upload from Device.');path=await (window.eqo106Path?window.eqo106Path(s.song,user):upload(blob,user))}if(existing.has(path))return position;const r=await client.from('songs').insert({playlist_id:target.id,title:s.title,artist:s.artist,file_path:path,position:position+1});if(r.error)throw Error('Could not add '+s.title+': '+r.error.message);existing.add(path);return position+1}
 async function addLocal(s,p,known){let id=s.song.id;if(s.source==='cloud'){const r=await client.storage.from('EQO - music').createSignedUrl(s.song.file_path,120);if(r.error)throw Error('Could not access '+s.title+': '+r.error.message);const response=await fetch(r.data.signedUrl);if(!response.ok)throw Error('Could not download '+s.title);const blob=await response.blob();id='eqo-cloud-'+crypto.randomUUID();await localPut('songs',{id,title:s.title,artist:s.artist,album:'',file:blob,added:Date.now(),lastPlayed:0})}if(!known.has(id)){p.songIds.push(id);known.add(id)}return id}
 async function save(){if(!target||working||!selected.size)return;working=true;updateButton();$('eqo80cancel').disabled=true;let done=0;try{const picks=items.filter(x=>selected.has(x.key));if(target.type==='cloud'){const user=await cloud();const r=await client.from('songs').select('file_path,position').eq('playlist_id',target.id).order('position',{ascending:false}).limit(1000);if(r.error)throw r.error;const existing=new Set((r.data||[]).map(x=>x.file_path));let pos=Math.max(0,...(r.data||[]).map(x=>Number(x.position)||0));for(const s of picks){status('Adding '+s.title+'…');const next=await addCloud(s,pos,existing,user);if(next!==pos)done++;pos=next}$('eqoCloudRefresh')?.click()}else{const playlists=await localAll('playlists');const p=playlists.find(x=>String(x.id)===target.id);if(!p)throw Error('Local playlist no longer exists');const known=new Set(p.songIds||[]);for(const s of picks){status('Adding '+s.title+'…');const before=known.size;await addLocal(s,p,known);if(known.size>before)done++}await localPut('playlists',p);$('playlistBack')?.click();$('tabHome')?.click()}status('Added '+done+' song(s). Original songs and playlists were preserved. Refresh your library to see updates.');selected.clear();updateButton();setTimeout(()=>{if(!working)close()},1500)}catch(e){status('Added '+done+' before stopping: '+e.message+'. No original tracks were deleted.')}finally{working=false;$('eqo80cancel').disabled=false;updateButton()}}
 async function fromDevice(file){if(!target||!file)return;working=true;$('eqo80upload').disabled=true;status('Adding '+file.name+'…');try{if(!/\.mp3$/i.test(file.name))throw Error('Choose an MP3 file.');if(!file.size)throw Error('Selected MP3 has no audio data.');const title=file.name.replace(/\.mp3$/i,'');if(target.type==='cloud'){const user=await cloud();const path=await upload(file,user);const r=await client.from('songs').select('position').eq('playlist_id',target.id).order('position',{ascending:false}).limit(1);if(r.error)throw r.error;const ins=await client.from('songs').insert({playlist_id:target.id,title,artist:'',file_path:path,position:(Number(r.data?.[0]?.position)||0)+1});if(ins.error)throw Error('Audio uploaded but playlist registration failed: '+ins.error.message+'; storage path: '+path);$('eqoCloudRefresh')?.click();status('MP3 uploaded and added to cloud playlist. Check the playlist after refresh.')}else{const playlists=await localAll('playlists');const p=playlists.find(x=>String(x.id)===target.id);if(!p)throw Error('Local playlist not found');const id=crypto.randomUUID();await localPut('songs',{id,title,artist:'',album:'',file,added:Date.now(),lastPlayed:0});p.songIds.push(id);await localPut('playlists',p);status('MP3 added to local playlist and library on this device. Refresh to see it.')}}catch(e){status('Upload could not finish: '+e.message)}finally{working=false;$('eqo80upload').disabled=false;$('eqo80file').value=''}}
@@ -2303,6 +2303,50 @@ document.body.append(panel);
 $('eqo105done').onclick=()=>{if(!busy)panel.style.display='none'};
 const status=t=>{$('eqo105status').textContent=t};
 function checked(r){if(r.error)throw Error(r.error.message);return r.data}
+
+const pending=new Map();
+async function ensurePath(s,user){
+ if(s.file_path)return s.file_path;
+ const k=user.id+':'+s.id;
+ if(pending.has(k))return pending.get(k);
+ const job=(async()=>{
+  const fresh=(await window.eqoLocalBridge.all('songs')).find(x=>x.id===s.id)||s;
+  let path=fresh.eqo105CloudPaths?.[user.id];
+  if(!path){
+   const blob=[fresh.file,fresh.blob,fresh.audio,fresh.data].find(x=>x instanceof Blob&&x.size);
+   if(!blob||blob.size>25*1024*1024)throw Error('Missing audio or over 25 MB: '+s.title);
+   const bytes=await blob.arrayBuffer();
+   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),x=>x.toString(16).padStart(2,'0')).join('');
+   const ext=(blob.name||'').match(/\.(mp3|m4a|aac|wav|ogg|flac)$/i)?.[1]?.toLowerCase()||'mp3';
+   path=user.id+'/'+hash+'.'+ext;
+   const r=await client.storage.from('EQO - music').upload(path,new Blob([bytes],{type:blob.type||'audio/mpeg'}),{upsert:false});
+   if(r.error&&!/already exists|duplicate/i.test(r.error.message))throw Error(r.error.message);
+   const latest=(await window.eqoLocalBridge.all('songs')).find(x=>x.id===s.id);
+   if(latest){latest.eqo105CloudPaths={...latest.eqo105CloudPaths,[user.id]:path};await window.eqoLocalBridge.put('songs',latest)}
+  }
+  const existing=checked(await client.from('eqo_library_songs').select('file_path').eq('user_id',user.id).eq('file_path',path).limit(1));
+  if(!existing.length)checked(await client.from('eqo_library_songs').insert({user_id:user.id,title:s.title||'Untitled',artist:s.artist||'',file_path:path}));
+  return path;
+ })();pending.set(k,job);try{return await job}finally{pending.delete(k)}
+}
+window.eqo106Path=async(s,user)=>{client||=window.supabase.createClient(base,key,{auth:{persistSession:true}});return ensurePath(s,user)};
+let syncing=false;
+window.eqo106Sync=async()=>{
+ if(syncing||busy||!window.supabase||new URLSearchParams(location.search).has('eqo_guest'))return;
+ syncing=true;
+ try{
+  client||=window.supabase.createClient(base,key,{auth:{persistSession:true}});
+  const session=checked(await client.auth.getSession()).session;if(!session)return;
+  const user=session.user, consent='eqo106-consent-'+user.id;
+  const list=(await window.eqoLocalBridge.all('songs')).filter(s=>!s.eqo106Synced?.[user.id]);if(!list.length)return;
+  if(localStorage.getItem(consent)!=='yes'){if(!confirm('Automatically back up your imported music to your EQO cloud account? Only upload music you have permission to store. Local copies will be kept.'))return;localStorage.setItem(consent,'yes')}
+  let done=0;for(const song of list){window.eqoLocalBridge.diagnostics('Cloud sync '+(done+1)+' of '+list.length+': '+song.title);await ensurePath(song,user);const latest=(await window.eqoLocalBridge.all('songs')).find(x=>x.id===song.id);if(latest){latest.eqo106Synced={...latest.eqo106Synced,[user.id]:true};await window.eqoLocalBridge.put('songs',latest)}done++}
+  window.eqoLocalBridge.diagnostics('Cloud sync complete: '+done+' song(s).');
+ }catch(e){window.eqoLocalBridge.diagnostics('Cloud sync paused: '+e.message+'. Local music retained. Retry Cloud Sync from the song menu.',true)}finally{syncing=false}
+};
+window.addEventListener('online',()=>window.eqo106Sync());
+setTimeout(()=>window.eqo106Sync(),2500);
+
 async function run(title,items,share){
  if(busy)return;
  if(!items.length){alert('No songs to share.');return}
@@ -2316,17 +2360,10 @@ async function run(title,items,share){
   const rows=[];
   for(let i=0;i<items.length;i++){
    const s=items[i];status('Preparing song '+(i+1)+' of '+items.length+': '+s.title);
-   let path=s.file_path||s.eqo105CloudPaths?.[user.id];
-   if(!path){
-    const blob=[s.file,s.blob,s.audio,s.data].find(x=>x instanceof Blob&&x.size);
-    if(!blob||blob.size>25*1024*1024)throw Error('Missing audio or over 25 MB: '+s.title);
-    path=user.id+'/'+crypto.randomUUID()+'.mp3';
-    checked(await client.storage.from('EQO - music').upload(path,blob,{contentType:'audio/mpeg',upsert:false}));
-    // Cache the uploaded path per account without changing the original audio.
-    if(s.id){s.eqo105CloudPaths={...s.eqo105CloudPaths,[user.id]:path};await storePut('songs',s)}
-   }
+   const path=await ensurePath(s,user);
    rows.push({title:s.title||'Untitled',artist:s.artist||'',file_path:path,position:i+1});
   }
+  if(!share){status('Cloud sync complete. Original music retained.');return}
   status('Registering cloud playlist…');
   const p=checked(await client.from('playlists').insert({title,owner_id:user.id}).select('id').single());
   checked(await client.from('songs').insert(rows.map(r=>({...r,playlist_id:p.id}))));
@@ -2344,12 +2381,12 @@ async function run(title,items,share){
  }catch(e){status('Could not finish: '+e.message+'. Original local music was not deleted. Some cloud uploads may remain.')}
  finally{busy=false;$('eqo105done').disabled=false}
 }
-async function local(id,share){const list=await storeGetAll('songs');const s=list.find(x=>String(x.id)===String(id));if(!s){alert('Selected song is unavailable.');return}return run(s.title,[s],share)}
+async function local(id,share){const list=await window.eqoLocalBridge.all('songs');const s=list.find(x=>String(x.id)===String(id));if(!s){alert('Selected song is unavailable.');return}return run(s.title,[s],share)}
 window.eqo105Song=local;
-window.eqo105Playlist=async id=>{const p=(await storeGetAll('playlists')).find(x=>String(x.id)===String(id));if(!p)return;const list=await storeGetAll('songs');const items=p.songIds.map(id=>list.find(s=>s.id===id));if(items.some(s=>!s)){alert('A playlist song is missing. Restore it before sharing.');return}run(p.name,items,true)};
+window.eqo105Playlist=async id=>{const p=(await window.eqoLocalBridge.all('playlists')).find(x=>String(x.id)===String(id));if(!p)return;const list=await window.eqoLocalBridge.all('songs');const items=p.songIds.map(id=>list.find(s=>s.id===id));if(items.some(s=>!s)){alert('A playlist song is missing. Restore it before sharing.');return}run(p.name,items,true)};
 const cloud=$('eqoCloudAudio'), audio=$('audio');
-cloud?.addEventListener('play',()=>source='cloud');audio?.addEventListener('play',()=>source='local');
-$('sharePlaying')?.addEventListener('click',async e=>{e.preventDefault();e.stopImmediatePropagation();try{if(source!=='cloud'){if(current)await local(current,true);else alert('Choose a song first.');return}const t=cloud.eqoTrackInfo;if(!t?.trackId)throw Error('Choose a cloud song first.');client||=window.supabase.createClient(base,key);const row=checked(await client.from('songs').select('id,title,artist,file_path').eq('id',t.trackId).single());await run(row.title,[row],true)}catch(err){alert(err.message)}},true);
+cloud?.addEventListener('play',()=>source='cloud');cloud?.addEventListener('loadstart',()=>{if(cloud.eqoTrackInfo)source='cloud'});window.addEventListener('eqo-track-change',()=>source='local');audio?.addEventListener('play',()=>source='local');
+$('sharePlaying')?.addEventListener('click',async e=>{e.preventDefault();e.stopImmediatePropagation();try{if(source!=='cloud'){if(window.eqoLocalBridge.current())await local(window.eqoLocalBridge.current(),true);else alert('Choose a song first.');return}const t=cloud.eqoTrackInfo;if(!t?.trackId)throw Error('Choose a cloud song first.');client||=window.supabase.createClient(base,key);const row=checked(await client.from('songs').select('id,title,artist,file_path').eq('id',t.trackId).single());await run(row.title,[row],true)}catch(err){alert(err.message)}},true);
 })();
 </script>
 
